@@ -9,3 +9,9 @@
 - Easy to use API
 - Document based storage
 - Thread safe
+
+To start, run:
+
+```bash
+cargo run --bin cli
+```

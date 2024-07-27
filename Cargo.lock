@@ -10,10 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core"
-version = "0.1.0"
-
-[[package]]
 name = "embeddings"
 version = "0.1.0"
 
@@ -27,6 +23,10 @@ version = "0.1.0"
 
 [[package]]
 name = "request_handler"
+version = "0.1.0"
+
+[[package]]
+name = "rvector_core"
 version = "0.1.0"
 
 [[package]]

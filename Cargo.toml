@@ -5,7 +5,7 @@ members = [
   "packages/storage",
   "packages/vector",
   "packages/embeddings",
-  "packages/core",
+  "packages/rvector_core",
   "packages/request_handler",
   "tools/logger",
   "tools/monitor",
