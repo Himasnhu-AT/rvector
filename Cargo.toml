@@ -1,0 +1,13 @@
+[workspace]
+
+members = [ 
+  "cli",
+  "packages/storage",
+  "packages/vector",
+  "packages/embeddings",
+  "packages/core",
+  "packages/request_handler",
+  "tools/logger",
+  "tools/monitor",
+  "tools/tests",  
+]
