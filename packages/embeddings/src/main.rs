@@ -1,3 +1,3 @@
-fn main() {
-    println!("Hello, world!");
+pub fn embed() {
+    println!("Hello, world! from embeddings");
 }
