@@ -1,10 +1,12 @@
 [package]
-name = "cli"
+name = "configs"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-embeddings = { path = "../packages/embeddings" }
-configs = { path = "../packages/configs" }
+dotenv = "0.15"
+config = "0.13"
+serde = { version = "1.0", features = ["derive"] }
+structopt = "0.3"
