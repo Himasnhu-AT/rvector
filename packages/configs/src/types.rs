@@ -8,6 +8,12 @@ pub struct VectorDocument {
     pub metadata: Option<HashMap<String, String>>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Storage {
+    pub path: String,
+    pub data: HashMap<String, VectorDocument>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StoreVectorRequest {
     pub key: String,

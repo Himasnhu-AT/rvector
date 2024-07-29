@@ -91,7 +91,7 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "configs",
- "embeddings",
+ "rvector_core",
 ]
 
 [[package]]
@@ -418,6 +418,12 @@ dependencies = [
 [[package]]
 name = "rvector_core"
 version = "0.1.0"
+dependencies = [
+ "configs",
+ "embeddings",
+ "storage",
+ "vector",
+]
 
 [[package]]
 name = "ryu"
@@ -471,6 +477,10 @@ dependencies = [
 [[package]]
 name = "storage"
 version = "0.1.0"
+dependencies = [
+ "configs",
+ "serde",
+]
 
 [[package]]
 name = "strsim"
