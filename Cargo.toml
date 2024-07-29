@@ -7,6 +7,7 @@ members = [
   "packages/embeddings",
   "packages/rvector_core",
   "packages/request_handler",
+  "packages/configs",
   "tools/logger",
   "tools/monitor",
   "tools/tests",  
