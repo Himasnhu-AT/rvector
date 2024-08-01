@@ -7,6 +7,7 @@ documentation = "https://example.com/bar"
 [workspace]
 members = [
     "cli",
+    "client",
     "packages/storage",
     "packages/vector",
     "packages/embeddings",
@@ -15,7 +16,8 @@ members = [
     "packages/configs",
     "tools/logger",
     "tools/monitor",
-    "tools/tests", "doc",
+    "tools/tests",
+    # "docs",
 ]
 resolver = "2"
 
