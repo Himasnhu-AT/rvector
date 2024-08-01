@@ -20,43 +20,49 @@
 
 ```bash
 git clone https://github.com/himasnhu-at/rvector.git
-```
-
-2. Navigate to the project directory:
-
-```bash
 cd rvector
 ```
 
-3. Run the CLI:
+2. Run the CLI:
 
 ```bash
 cargo run --bin cli # add --release, if you want to run the optimized version
 ```
 
-4. Lint the code:
+3. Build the project:
+
+```bash
+cargo build # add --release, if you want to run the optimized version
+```
+
+4. Generate End User docs, run:
+
+```bash
+cd docs
+mdbook serve --open
+```
+
+## Contributing
+
+Clone and setup repo locally, make changes
+
+1. Lint the code:
 
 ```bash
 cargo clippy # lint the code
 cargo fix # fix the code
 ```
 
-5. Start the documentation server:
-
-```bash
-cargo doc --open
-```
-
-5. Run the tests:
+2. Run the tests:
 
 ```bash
 cargo test
 ```
 
-6. Build the project:
+3. Start the documentation server:
 
 ```bash
-cargo build # add --release, if you want to run the optimized version
+cargo doc --open
 ```
 
 ## Workspace Structure

@@ -5,17 +5,17 @@ authors = ["Himanshu <hyattherate2005@gmail.com>"]
 documentation = "https://example.com/bar"
 
 [workspace]
-members = [ 
-  "cli",
-  "packages/storage",
-  "packages/vector",
-  "packages/embeddings",
-  "packages/rvector_core",
-  "packages/request_handler",
-  "packages/configs",
-  "tools/logger",
-  "tools/monitor",
-  "tools/tests",  
+members = [
+    "cli",
+    "packages/storage",
+    "packages/vector",
+    "packages/embeddings",
+    "packages/rvector_core",
+    "packages/request_handler",
+    "packages/configs",
+    "tools/logger",
+    "tools/monitor",
+    "tools/tests", "doc",
 ]
 resolver = "2"
 
