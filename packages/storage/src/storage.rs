@@ -2,7 +2,7 @@ use configs::types::{Storage, VectorDocument};
 
 use serde_json;
 use std::collections::HashMap;
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 
 pub trait StoreData {

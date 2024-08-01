@@ -2,7 +2,7 @@
 
 `RVector` is a MongoDB-inspired vector database. It is a document-based application capable of storing and retrieving vectors of any dimension. It is designed for RAG-based (Retrieval-Augmented Generation) applications, where vectors are used to represent data.
 
-> ![Important]
+> [!Important]
 > This project is currently under development. Please check back later for updates.
 > Expected release date: 5th August 2024
 

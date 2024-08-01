@@ -1,8 +1,7 @@
-use configs::app_config::{AppConfig};
+use configs::app_config::AppConfig;
 use configs::cli_config::CliConfig;
 
 use rvector_core::check_working;
-
 
 fn main() {
     println!("Hello, world!");
