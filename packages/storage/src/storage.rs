@@ -1,8 +1,8 @@
 use configs::types::{Storage, VectorDocument};
-use serde::{Deserialize, Serialize};
+
 use serde_json;
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
+use std::fs::{OpenOptions};
 use std::io::{Read, Write};
 
 pub trait StoreData {

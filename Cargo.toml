@@ -1,5 +1,10 @@
-[workspace]
+[workspace.package]
+version = "0.1.0"
+description = "MongodB inspired vector database"
+authors = ["Himanshu <hyattherate2005@gmail.com>"]
+documentation = "https://example.com/bar"
 
+[workspace]
 members = [ 
   "cli",
   "packages/storage",
@@ -12,3 +17,7 @@ members = [
   "tools/monitor",
   "tools/tests",  
 ]
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
