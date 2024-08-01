@@ -39,6 +39,7 @@ impl AppConfig {
         }
     }
 
+    #[allow(deprecated)]
     pub fn from_file() -> Self {
         let mut settings = Config::default();
         settings.merge(File::with_name("config")).unwrap();

@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 
-[lib]
-name = "embeddings"
-path = "src/main.rs"
+# [lib]
+# name = "embeddings"
+# path = "src/main.rs"
