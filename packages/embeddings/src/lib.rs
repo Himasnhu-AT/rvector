@@ -1,0 +1,78 @@
+//! [rvector](https://github.com/Anush008/rvector-rs) - Fast, light, accurate library built for retrieval embedding generation.
+//!
+//! The library provides the TextEmbedding struct to interface with text embedding models.
+//!
+#![cfg_attr(
+    feature = "online",
+    doc = r#"
+ ### Instantiating [TextEmbedding](crate::TextEmbedding)
+ ```
+ use rvector::{TextEmbedding, InitOptions, EmbeddingModel};
+
+# fn model_demo() -> anyhow::Result<()> {
+ // With default InitOptions
+ let model = TextEmbedding::try_new(Default::default())?;
+
+ // List all supported models
+ dbg!(TextEmbedding::list_supported_models());
+
+ // With custom InitOptions
+ let model = TextEmbedding::try_new(InitOptions {
+     model_name: EmbeddingModel::BGEBaseENV15,
+     show_download_progress: false,
+     ..Default::default()
+ })?;
+ # Ok(())
+ # }
+ ```
+"#
+)]
+//! Find more info about the available options in the [InitOptions](crate::InitOptions) documentation.
+//!
+#![cfg_attr(
+    feature = "online",
+    doc = r#"
+ ### Embeddings generation
+```
+# use rvector::{TextEmbedding, InitOptions, EmbeddingModel};
+# fn embedding_demo() -> anyhow::Result<()> {
+# let model: TextEmbedding = TextEmbedding::try_new(Default::default())?;
+ let documents = vec![
+    "passage: Hello, World!",
+    "query: Hello, World!",
+    "passage: This is an example passage.",
+    // You can leave out the prefix but it's recommended
+    "rvector-rs is licensed under BSD-3-Clause license"
+    ];
+
+ // Generate embeddings with the default batch size, 256
+ let embeddings = model.embed(documents, None)?;
+
+ println!("Embeddings length: {}", embeddings.len()); // -> Embeddings length: 4
+ # Ok(())
+ # }
+ ```
+"#
+)]
+
+mod common;
+mod models;
+mod reranking;
+mod text_embedding;
+
+#[cfg(feature = "online")]
+#[cfg(test)]
+mod tests;
+
+pub use ort::ExecutionProviderDispatch;
+
+pub use crate::common::{read_file_to_bytes, Embedding, Error, TokenizerFiles};
+pub use crate::models::reranking::{RerankerModel, RerankerModelInfo};
+pub use crate::models::text_embedding::{EmbeddingModel, ModelInfo};
+pub use crate::reranking::{
+    RerankInitOptions, RerankInitOptionsUserDefined, RerankResult, TextRerank,
+    UserDefinedRerankingModel,
+};
+pub use crate::text_embedding::{
+    InitOptions, InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel,
+};

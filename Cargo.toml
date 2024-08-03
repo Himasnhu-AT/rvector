@@ -1,14 +1,25 @@
-[workspace]
+[workspace.package]
+version = "0.1.0"
+description = "MongodB inspired vector database"
+authors = ["Himanshu <hyattherate2005@gmail.com>"]
+documentation = "https://example.com/bar"
 
-members = [ 
-  "cli",
-  "packages/storage",
-  "packages/vector",
-  "packages/embeddings",
-  "packages/rvector_core",
-  "packages/request_handler",
-  "packages/configs",
-  "tools/logger",
-  "tools/monitor",
-  "tools/tests",  
+[workspace]
+members = [
+    "cli",
+    "client",
+    "packages/storage",
+    "packages/vector",
+    "packages/embeddings",
+    "packages/rvector_core",
+    "packages/request_handler",
+    "packages/configs",
+    "tools/logger",
+    "tools/monitor",
+    "tools/tests",
+    # "docs",
 ]
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
