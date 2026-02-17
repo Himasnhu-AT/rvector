@@ -1,0 +1,39 @@
+[package]
+name = "abkve"
+version = "0.1.0"
+edition = "2021"
+authors = ["Himanshu"]
+description = "Hyper-efficient in-memory Vector Database for semantic LLM caching"
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+mimalloc = { version = "0.1", default-features = false }
+parking_lot = "0.12"
+rayon = "1.8"
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+anyhow = "1.0.101"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+rand = "0.8"
+
+[[bench]]
+name = "benchmark"
+harness = false
+
+[[example]]
+name = "load_test"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+strip = "symbols"
+
+[profile.bench]
+inherits = "release"
+strip = "none"
+debug = 1
