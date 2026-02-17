@@ -2,6 +2,10 @@
 
 `RVector` is a MongoDB-inspired vector database. It is a document-based application capable of storing and retrieving vectors of any dimension. It is designed for RAG-based (Retrieval-Augmented Generation) applications, where vectors are used to represent data.
 
+> [!Important]
+> This project is currently under development. Please check back later for updates.
+> Expected release date: 5th August 2024
+
 ## Features
 
 - Store and retrieve vectors of any dimension
@@ -10,10 +14,55 @@
 - Document-based storage
 - Thread-safe
 
-To start, run:
+## Getting Started
+
+1. Clone the repository:
 
 ```bash
-cargo run --bin cli
+git clone https://github.com/himasnhu-at/rvector.git
+cd rvector
+```
+
+2. Run the CLI:
+
+```bash
+cargo run --bin cli # add --release, if you want to run the optimized version
+```
+
+3. Build the project:
+
+```bash
+cargo build # add --release, if you want to run the optimized version
+```
+
+4. Generate End User docs, run:
+
+```bash
+cd docs
+mdbook serve --open
+```
+
+## Contributing
+
+Clone and setup repo locally, make changes
+
+1. Lint the code:
+
+```bash
+cargo clippy # lint the code
+cargo fix # fix the code
+```
+
+2. Run the tests:
+
+```bash
+cargo test
+```
+
+3. Start the documentation server:
+
+```bash
+cargo doc --open
 ```
 
 ## Workspace Structure
@@ -53,26 +102,6 @@ The `tools/monitor` module provides monitoring and metrics collection. It helps 
 ### tools/tests
 
 The `tools/tests` module includes test cases for the various components of RVector. It ensures that all functionalities are working as expected and helps maintain the quality and reliability of the codebase.
-
-## Getting Started
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/himasnhu-at/rvector.git
-```
-
-2. Navigate to the project directory:
-
-```bash
-cd rvector
-```
-
-3. Run the CLI:
-
-```bash
-cargo run --bin cli
-```
 
 ## Contributing
 
