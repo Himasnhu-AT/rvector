@@ -28,10 +28,10 @@ fn generate_random_vectors(n: usize, dim: usize, seed: u64) -> Vec<Vec<f32>> {
 
 /// Build an `Abkve` instance pre-loaded with `n_vecs` random vectors of `dim`.
 fn build_db(n_vecs: usize, dim: usize) -> Abkve {
-    let db = Abkve::new(dim, n_vecs);
+    let db = Abkve::new(dim, n_vecs).unwrap();
     let vecs = generate_random_vectors(n_vecs, dim, SEED);
     for (i, v) in vecs.iter().enumerate() {
-        db.add(i as u64, v);
+        db.add(i as u64, v).unwrap();
     }
     db
 }
@@ -53,7 +53,7 @@ fn bench_search_optimized(c: &mut Criterion) {
 
     group.bench_function(
         BenchmarkId::new("unrolled_8x_unsafe", format!("{N_VECS}vecs_dim{DIM}")),
-        |b| b.iter(|| black_box(db.search(black_box(&query), black_box(THRESHOLD)))),
+        |b| b.iter(|| black_box(db.search(black_box(&query), black_box(THRESHOLD)).unwrap())),
     );
 
     group.finish();
@@ -72,7 +72,7 @@ fn bench_search_naive(c: &mut Criterion) {
 
     group.bench_function(
         BenchmarkId::new("iterator_safe", format!("{N_VECS}vecs_dim{DIM}")),
-        |b| b.iter(|| black_box(db.search_naive(black_box(&query), black_box(THRESHOLD)))),
+        |b| b.iter(|| black_box(db.search_naive(black_box(&query), black_box(THRESHOLD)).unwrap())),
     );
 
     group.finish();
@@ -89,7 +89,7 @@ fn bench_search_parallel(c: &mut Criterion) {
 
     group.bench_function(
         BenchmarkId::new("rayon_parallel", format!("{N_VECS}vecs_dim{DIM}")),
-        |b| b.iter(|| black_box(db.search_parallel(black_box(&query), black_box(THRESHOLD)))),
+        |b| b.iter(|| black_box(db.search_parallel(black_box(&query), black_box(THRESHOLD)).unwrap())),
     );
 
     group.finish();
@@ -106,7 +106,7 @@ fn bench_scaling(c: &mut Criterion) {
         let db = build_db(n, DIM);
         group.throughput(Throughput::Elements(n as u64));
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _n| {
-            b.iter(|| black_box(db.search(black_box(&query), black_box(THRESHOLD))))
+            b.iter(|| black_box(db.search(black_box(&query), black_box(THRESHOLD)).unwrap()))
         });
     }
     group.finish();
@@ -122,9 +122,9 @@ fn bench_add(c: &mut Criterion) {
 
     group.bench_function("add_single_vector", |b| {
         b.iter_batched(
-            || Abkve::new(DIM, N_VECS + 1),
+            || Abkve::new(DIM, N_VECS + 1).unwrap(),
             |db| {
-                db.add(0, black_box(&vecs[0]));
+                db.add(0, black_box(&vecs[0])).unwrap();
                 db
             },
             criterion::BatchSize::SmallInput,

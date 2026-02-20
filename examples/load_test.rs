@@ -66,9 +66,9 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
     println!("Phase 2 — Inserting into Abkve (with L2 normalization)");
 
     let t0 = Instant::now();
-    let db = Abkve::new(DIM, N_VECS);
+    let db = Abkve::new(DIM, N_VECS).unwrap();
     for (i, v) in vectors.iter().enumerate() {
-        db.add(i as u64, v);
+        db.add(i as u64, v).unwrap();
     }
     let insert_duration = t0.elapsed();
     println!("  Inserted {N_VECS} vectors in {insert_duration:?}");
@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     let t0 = Instant::now();
-    let baseline_results: Vec<_> = queries.iter().map(|q| db.search(q, THRESHOLD)).collect();
+    let baseline_results: Vec<_> = queries.iter().map(|q| db.search(q, THRESHOLD).unwrap()).collect();
     let search_duration = t0.elapsed();
 
     let hits = baseline_results.iter().filter(|r| r.is_some()).count();
@@ -108,7 +108,7 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
     {
         let file = fs::File::create(&tmp_path)?;
         let writer = BufWriter::new(file);
-        db.save(writer)?;
+        db.save(writer).unwrap();
     }
     let save_duration = t0.elapsed();
     let file_size = fs::metadata(&tmp_path)?.len();
@@ -129,7 +129,7 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
     let db_loaded = {
         let file = fs::File::open(&tmp_path)?;
         let reader = BufReader::new(file);
-        Abkve::load(reader)?
+        Abkve::load(reader).unwrap()
     };
     let load_duration = t0.elapsed();
 
@@ -149,7 +149,7 @@ fn main() -> anyhow::Result<(), Box<dyn std::error::Error>> {
     let t0 = Instant::now();
     let loaded_results: Vec<_> = queries
         .iter()
-        .map(|q| db_loaded.search(q, THRESHOLD))
+        .map(|q| db_loaded.search(q, THRESHOLD).unwrap())
         .collect();
     let verify_duration = t0.elapsed();
 

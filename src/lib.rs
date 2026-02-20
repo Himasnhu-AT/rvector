@@ -45,7 +45,52 @@ static GLOBAL: MiMalloc = MiMalloc;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::io::{self, Read, Write};
+
+/// Errors that can occur during Abkve operations.
+#[derive(Debug)]
+pub enum AbkveError {
+    /// Attempted to insert or search with a vector of incorrect dimension.
+    DimensionMismatch { expected: usize, got: usize },
+    /// Dimension must be greater than 0.
+    InvalidDimension,
+    /// Vector magnitude is zero; cannot compute cosine similarity.
+    ZeroVector,
+    /// Deserialized index data is corrupted or structurally invalid.
+    InvalidIndexData,
+    /// IO error during save or load.
+    Io(io::Error),
+}
+
+impl fmt::Display for AbkveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DimensionMismatch { expected, got } => {
+                write!(f, "vector dimension mismatch: expected {}, got {}", expected, got)
+            }
+            Self::InvalidDimension => write!(f, "dimension must be > 0"),
+            Self::ZeroVector => write!(f, "cannot process a zero-magnitude vector"),
+            Self::InvalidIndexData => write!(f, "loaded index data is corrupted or structurally invalid"),
+            Self::Io(e) => write!(f, "io error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for AbkveError {}
+
+impl From<io::Error> for AbkveError {
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
+impl From<bincode::Error> for AbkveError {
+    fn from(e: bincode::Error) -> Self {
+        Self::Io(io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+}
+
 
 /// Thread-safe wrapper around the inner store.
 ///
@@ -53,22 +98,23 @@ use std::io::{self, Read, Write};
 ///   - Uncontended lock acquisition is a single atomic CAS (~3 cycles vs ~20).
 ///   - No OS-level futex call on the fast path.
 ///   - Provides `upgradable_read()` for future lock-promotion without writer starvation.
+#[derive(Debug)]
 pub struct Abkve {
     inner: RwLock<AbkveInner>,
 }
 
 /// Search result type: (id, cosine_similarity_score)
-pub type SearchResult = Option<(u64, f32)>;
+pub type SearchResult = Result<Option<(u64, f32)>, AbkveError>;
 
 impl Abkve {
     /// Create a new vector store for vectors of `dim` dimensions.
     ///
     /// Pre-allocates memory for `capacity` vectors to avoid reallocation
     /// during the trading session (realloc copies data and creates jitter).
-    pub fn new(dim: usize, capacity: usize) -> Self {
-        Self {
-            inner: RwLock::new(AbkveInner::new(dim, capacity)),
-        }
+    pub fn new(dim: usize, capacity: usize) -> Result<Self, AbkveError> {
+        Ok(Self {
+            inner: RwLock::new(AbkveInner::new(dim, capacity)?),
+        })
     }
 
     /// Insert a vector with the given ID.
@@ -76,8 +122,8 @@ impl Abkve {
     /// The vector is L2-normalized in-place before storage.
     /// Normalization at insert time means the hot search path never
     /// divides — it only multiplies and adds.
-    pub fn add(&self, id: u64, vector: &[f32]) {
-        self.inner.write().add(id, vector);
+    pub fn add(&self, id: u64, vector: &[f32]) -> Result<(), AbkveError> {
+        self.inner.write().add(id, vector)
     }
 
     /// Search for the nearest neighbor to `query` above `threshold`.
@@ -103,16 +149,21 @@ impl Abkve {
     }
 
     /// Serialize the index to any `Write` sink (file, socket, memory buffer).
-    pub fn save<W: Write>(&self, writer: W) -> io::Result<()> {
+    pub fn save<W: Write>(&self, writer: W) -> Result<(), AbkveError> {
         let inner = self.inner.read();
-        bincode::serialize_into(writer, &*inner)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        bincode::serialize_into(writer, &*inner)?;
+        Ok(())
     }
 
     /// Deserialize an index from any `Read` source.
-    pub fn load<R: Read>(reader: R) -> io::Result<Self> {
-        let inner: AbkveInner = bincode::deserialize_from(reader)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    pub fn load<R: Read>(reader: R) -> Result<Self, AbkveError> {
+        let inner: AbkveInner = bincode::deserialize_from(reader)?;
+        
+        // Structural validation
+        if inner.dim == 0 || inner.data.len() != inner.ids.len() * inner.dim {
+            return Err(AbkveError::InvalidIndexData);
+        }
+
         Ok(Self {
             inner: RwLock::new(inner),
         })
@@ -148,7 +199,7 @@ impl Abkve {
 /// ```
 ///
 /// Both `ids` and `data` grow together — they are always the same logical length.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct AbkveInner {
     /// Dimensionality of every stored vector. Invariant: never changes after construction.
     dim: usize,
@@ -159,13 +210,15 @@ struct AbkveInner {
 }
 
 impl AbkveInner {
-    fn new(dim: usize, capacity: usize) -> Self {
-        assert!(dim > 0, "dimension must be > 0");
+    fn new(dim: usize, capacity: usize) -> Result<Self, AbkveError> {
+        if dim == 0 {
+            return Err(AbkveError::InvalidDimension);
+        }
         // Single allocation for all vector data. This is most critical
         // memory decision: one contiguous slab vs. N heap pointers.
         let data = Vec::with_capacity(dim * capacity);
         let ids = Vec::with_capacity(capacity);
-        Self { dim, data, ids }
+        Ok(Self { dim, data, ids })
     }
 
     fn len(&self) -> usize {
@@ -173,18 +226,19 @@ impl AbkveInner {
     }
 
     /// Insert and normalize a vector.
-    fn add(&mut self, id: u64, vector: &[f32]) {
-        assert_eq!(
-            vector.len(),
-            self.dim,
-            "vector dim mismatch: expected {}, got {}",
-            self.dim,
-            vector.len()
-        );
+    fn add(&mut self, id: u64, vector: &[f32]) -> Result<(), AbkveError> {
+        if vector.len() != self.dim {
+            return Err(AbkveError::DimensionMismatch {
+                expected: self.dim,
+                got: vector.len(),
+            });
+        }
 
         // Compute L2 norm
         let norm = l2_norm(vector);
-        debug_assert!(norm > 0.0, "cannot normalize a zero vector");
+        if norm <= 0.0 {
+            return Err(AbkveError::ZeroVector);
+        }
 
         // Push normalized components into the flat buffer.
         // e pre-allocated with_capacity, this is a memcpy into
@@ -194,6 +248,7 @@ impl AbkveInner {
             self.data.push(x * inv_norm);
         }
         self.ids.push(id);
+        Ok(())
     }
 
     /// Search for the best match using the hand-unrolled dot product.
@@ -211,11 +266,16 @@ impl AbkveInner {
     /// `chunks_of(8)` up to `dim / 8 * 8`, then handles the remainder
     /// with checked indexing — the unsafe zone is strictly the full-chunk loop.
     fn search(&self, query: &[f32], threshold: f32) -> SearchResult {
-        assert_eq!(query.len(), self.dim, "query dim mismatch");
+        if query.len() != self.dim {
+            return Err(AbkveError::DimensionMismatch {
+                expected: self.dim,
+                got: query.len(),
+            });
+        }
 
         let n_vecs = self.ids.len();
         if n_vecs == 0 {
-            return None;
+            return Ok(None);
         }
 
         // Normalize query so dot product === cosine similarity.
@@ -241,7 +301,7 @@ impl AbkveInner {
             }
         }
 
-        best_idx.map(|i| (self.ids[i], best_score))
+        Ok(best_idx.map(|i| (self.ids[i], best_score)))
     }
 
     /// Parallel variant using rayon. Splits the flat buffer into chunks of
@@ -250,11 +310,16 @@ impl AbkveInner {
     /// Rayon's `par_chunks` guarantees each thread processes a non-overlapping
     /// subslice — no locking needed inside the map closure.
     fn search_parallel(&self, query: &[f32], threshold: f32) -> SearchResult {
-        assert_eq!(query.len(), self.dim, "query dim mismatch");
+        if query.len() != self.dim {
+            return Err(AbkveError::DimensionMismatch {
+                expected: self.dim,
+                got: query.len(),
+            });
+        }
 
         let n_vecs = self.ids.len();
         if n_vecs == 0 {
-            return None;
+            return Ok(None);
         }
 
         let norm_query = normalize_vec(query);
@@ -283,21 +348,26 @@ impl AbkveInner {
             );
 
         if best_idx == usize::MAX || best_score <= threshold {
-            None
+            Ok(None)
         } else {
-            Some((self.ids[best_idx], best_score))
+            Ok(Some((self.ids[best_idx], best_score)))
         }
     }
 
     /// Naive search using idiomatic Rust iterators — no unsafe, no unrolling.
     /// Used as the benchmark baseline to measure the speedup from our optimizations.
     fn search_naive(&self, query: &[f32], threshold: f32) -> SearchResult {
-        assert_eq!(query.len(), self.dim, "query dim mismatch");
+        if query.len() != self.dim {
+            return Err(AbkveError::DimensionMismatch {
+                expected: self.dim,
+                got: query.len(),
+            });
+        }
 
         let norm_query = normalize_vec(query);
         let dim = self.dim;
 
-        self.data
+        Ok(self.data
             .chunks_exact(dim)
             .enumerate()
             .map(|(i, row)| {
@@ -306,7 +376,7 @@ impl AbkveInner {
             })
             .filter(|(_, score)| *score > threshold)
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(i, score)| (self.ids[i], score))
+            .map(|(i, score)| (self.ids[i], score)))
     }
 }
 
@@ -413,17 +483,17 @@ mod tests {
     use super::*;
 
     fn make_store(dim: usize) -> Abkve {
-        Abkve::new(dim, 16)
+        Abkve::new(dim, 16).unwrap()
     }
 
     #[test]
     fn test_basic_insert_and_search() {
         let db = make_store(4);
-        db.add(1, &[1.0, 0.0, 0.0, 0.0]);
-        db.add(2, &[0.0, 1.0, 0.0, 0.0]);
+        db.add(1, &[1.0, 0.0, 0.0, 0.0]).unwrap();
+        db.add(2, &[0.0, 1.0, 0.0, 0.0]).unwrap();
 
         // Query closest to vector 1
-        let result = db.search(&[0.99, 0.01, 0.0, 0.0], 0.5);
+        let result = db.search(&[0.99, 0.01, 0.0, 0.0], 0.5).unwrap();
         assert!(result.is_some());
         let (id, score) = result.unwrap();
         assert_eq!(id, 1);
@@ -433,10 +503,10 @@ mod tests {
     #[test]
     fn test_threshold_filtering() {
         let db = make_store(4);
-        db.add(1, &[1.0, 0.0, 0.0, 0.0]);
+        db.add(1, &[1.0, 0.0, 0.0, 0.0]).unwrap();
 
         // Orthogonal vector — dot product = 0, should be filtered out
-        let result = db.search(&[0.0, 1.0, 0.0, 0.0], 0.5);
+        let result = db.search(&[0.0, 1.0, 0.0, 0.0], 0.5).unwrap();
         assert!(result.is_none(), "orthogonal vectors should not match");
     }
 
@@ -458,8 +528,8 @@ mod tests {
     fn test_normalization_invariant() {
         let db = make_store(4);
         // After normalization, dot product with itself should be ≈ 1.0
-        db.add(42, &[3.0, 4.0, 0.0, 0.0]); // norm = 5.0
-        let result = db.search(&[3.0, 4.0, 0.0, 0.0], 0.99);
+        db.add(42, &[3.0, 4.0, 0.0, 0.0]).unwrap(); // norm = 5.0
+        let result = db.search(&[3.0, 4.0, 0.0, 0.0], 0.99).unwrap();
         assert!(result.is_some());
         let (id, score) = result.unwrap();
         assert_eq!(id, 42);
@@ -473,19 +543,19 @@ mod tests {
     #[test]
     fn test_empty_store() {
         let db = make_store(4);
-        assert!(db.search(&[1.0, 0.0, 0.0, 0.0], 0.0).is_none());
+        assert!(db.search(&[1.0, 0.0, 0.0, 0.0], 0.0).unwrap().is_none());
     }
 
     #[test]
     fn test_parallel_matches_sequential() {
-        let db = Abkve::new(8, 100);
+        let db = Abkve::new(8, 100).unwrap();
         for i in 0..50u64 {
             let v: Vec<f32> = (0..8).map(|j| (i + j) as f32).collect();
-            db.add(i, &v);
+            db.add(i, &v).unwrap();
         }
         let query: Vec<f32> = (0..8).map(|j| j as f32).collect();
-        let seq = db.search(&query, 0.0);
-        let par = db.search_parallel(&query, 0.0);
+        let seq = db.search(&query, 0.0).unwrap();
+        let par = db.search_parallel(&query, 0.0).unwrap();
         match (seq, par) {
             (Some((sid, ss)), Some((pid, ps))) => {
                 assert_eq!(sid, pid, "sequential and parallel should return same id");
@@ -503,9 +573,9 @@ mod tests {
 
     #[test]
     fn test_save_and_load_roundtrip() {
-        let db = Abkve::new(4, 8);
-        db.add(10, &[1.0, 0.0, 0.0, 0.0]);
-        db.add(20, &[0.0, 1.0, 0.0, 0.0]);
+        let db = Abkve::new(4, 8).unwrap();
+        db.add(10, &[1.0, 0.0, 0.0, 0.0]).unwrap();
+        db.add(20, &[0.0, 1.0, 0.0, 0.0]).unwrap();
 
         let mut buf = Vec::new();
         db.save(&mut buf).expect("save failed");
@@ -514,7 +584,7 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded.dim(), 4);
 
-        let result = loaded.search(&[0.99, 0.01, 0.0, 0.0], 0.5);
+        let result = loaded.search(&[0.99, 0.01, 0.0, 0.0], 0.5).unwrap();
         assert_eq!(result.map(|(id, _)| id), Some(10));
     }
 
@@ -522,8 +592,27 @@ mod tests {
     fn test_remainder_handling() {
         // dim=9 is not divisible by 8 — exercises the remainder path
         let db = make_store(9);
-        db.add(1, &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-        let result = db.search(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.99);
+        db.add(1, &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
+        let result = db.search(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.99).unwrap();
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_load_corrupted_data_validation() {
+        // Serialize a valid payload
+        let db = Abkve::new(4, 1).unwrap();
+        db.add(1, &[1.0, 2.0, 3.0, 4.0]).unwrap();
+        let mut buf = Vec::new();
+        bincode::serialize_into(&mut buf, &*db.inner.read()).unwrap();
+
+        // Corrupt it by truncating the last few bytes (so data length doesn't match dim)
+        buf.truncate(buf.len() - 4);
+
+        // Loading should fail on validation without a panic
+        let err = Abkve::load(buf.as_slice()).unwrap_err();
+        match err {
+            AbkveError::Io(_) | AbkveError::InvalidIndexData => {}
+            _ => panic!("Expected IO error or InvalidIndexData"),
+        }
     }
 }
