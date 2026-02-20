@@ -293,7 +293,7 @@ impl AbkveInner {
             let base = i * dim;
             // SAFETY: base + dim == (i+1)*dim <= n_vecs*dim == data.len()
             let row = unsafe { data.get_unchecked(base..base + dim) };
-            let score = dot_product_unrolled(&norm_query, row);
+            let score = dot_product(&norm_query, row);
 
             if score > best_score {
                 best_score = score;
@@ -333,7 +333,7 @@ impl AbkveInner {
             .par_chunks(dim)
             .enumerate()
             .map(|(i, row)| {
-                let score = dot_product_unrolled(&norm_query, row);
+                let score = dot_product(&norm_query, row);
                 (i, score)
             })
             .reduce(
@@ -397,7 +397,132 @@ fn normalize_vec(v: &[f32]) -> Vec<f32> {
     v.iter().map(|x| x * inv).collect()
 }
 
-/// # Hand-Unrolled Dot Product — The Core Hot Path
+/// # Explicitly Vectorized Dot Product Core Path
+/// 
+/// This dynamically dispatches to the most appropriate hardware SIMD intrinsic
+/// implementation (AVX2+FMA on x86_64, NEON on aarch64) or falls back to the
+/// unrolled scalar version.
+#[inline(always)]
+pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+            return unsafe { dot_product_avx2(a, b) };
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        return unsafe { dot_product_neon(a, b) };
+    }
+
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        // Generic fallback for all other architectures, or if x86 runs without AVX2
+        dot_product_unrolled(a, b)
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+#[inline]
+unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
+    use std::arch::x86_64::*;
+    debug_assert_eq!(a.len(), b.len());
+    
+    let mut sum0 = _mm256_setzero_ps();
+    let mut sum1 = _mm256_setzero_ps();
+    let mut sum2 = _mm256_setzero_ps();
+    let mut sum3 = _mm256_setzero_ps();
+
+    let chunks = a.len() / 32;
+    let a_ptr = a.as_ptr();
+    let b_ptr = b.as_ptr();
+
+    for i in 0..chunks {
+        let idx = i * 32;
+        let a0 = _mm256_loadu_ps(a_ptr.add(idx));
+        let b0 = _mm256_loadu_ps(b_ptr.add(idx));
+        sum0 = _mm256_fmadd_ps(a0, b0, sum0);
+
+        let a1 = _mm256_loadu_ps(a_ptr.add(idx + 8));
+        let b1 = _mm256_loadu_ps(b_ptr.add(idx + 8));
+        sum1 = _mm256_fmadd_ps(a1, b1, sum1);
+
+        let a2 = _mm256_loadu_ps(a_ptr.add(idx + 16));
+        let b2 = _mm256_loadu_ps(b_ptr.add(idx + 16));
+        sum2 = _mm256_fmadd_ps(a2, b2, sum2);
+
+        let a3 = _mm256_loadu_ps(a_ptr.add(idx + 24));
+        let b3 = _mm256_loadu_ps(b_ptr.add(idx + 24));
+        sum3 = _mm256_fmadd_ps(a3, b3, sum3);
+    }
+    
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
+
+    let mut result_arr = [0.0f32; 8];
+    _mm256_storeu_ps(result_arr.as_mut_ptr(), sum0);
+    let mut result = result_arr.iter().sum();
+
+    let rem_start = chunks * 32;
+    for i in rem_start..a.len() {
+        result += *a.get_unchecked(i) * *b.get_unchecked(i);
+    }
+
+    result
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn dot_product_neon(a: &[f32], b: &[f32]) -> f32 {
+    use std::arch::aarch64::*;
+    debug_assert_eq!(a.len(), b.len());
+    
+    let mut sum0 = vdupq_n_f32(0.0);
+    let mut sum1 = vdupq_n_f32(0.0);
+    let mut sum2 = vdupq_n_f32(0.0);
+    let mut sum3 = vdupq_n_f32(0.0);
+
+    let chunks = a.len() / 16;
+    let a_ptr = a.as_ptr();
+    let b_ptr = b.as_ptr();
+
+    for i in 0..chunks {
+        let idx = i * 16;
+        let a0 = vld1q_f32(a_ptr.add(idx));
+        let b0 = vld1q_f32(b_ptr.add(idx));
+        sum0 = vfmaq_f32(sum0, a0, b0);
+        
+        let a1 = vld1q_f32(a_ptr.add(idx + 4));
+        let b1 = vld1q_f32(b_ptr.add(idx + 4));
+        sum1 = vfmaq_f32(sum1, a1, b1);
+
+        let a2 = vld1q_f32(a_ptr.add(idx + 8));
+        let b2 = vld1q_f32(b_ptr.add(idx + 8));
+        sum2 = vfmaq_f32(sum2, a2, b2);
+
+        let a3 = vld1q_f32(a_ptr.add(idx + 12));
+        let b3 = vld1q_f32(b_ptr.add(idx + 12));
+        sum3 = vfmaq_f32(sum3, a3, b3);
+    }
+
+    sum0 = vaddq_f32(sum0, sum1);
+    sum2 = vaddq_f32(sum2, sum3);
+    sum0 = vaddq_f32(sum0, sum2);
+
+    let mut result = vaddvq_f32(sum0); // horizontal add
+
+    let rem_start = chunks * 16;
+    for i in rem_start..a.len() {
+        result += *a_ptr.add(i) * *b_ptr.add(i);
+    }
+    
+    result
+}
+
+/// # Hand-Unrolled Dot Product — Fallback Path
 ///
 /// This function is called O(n_vectors) times per query. Every cycle counts.
 ///
@@ -511,16 +636,25 @@ mod tests {
     }
 
     #[test]
-    fn test_dot_product_unrolled_correctness() {
-        let a: Vec<f32> = (0..16).map(|i| i as f32).collect();
-        let b: Vec<f32> = (0..16).map(|i| i as f32).collect();
+    fn test_dot_product_correctness() {
+        let a: Vec<f32> = (0..64).map(|i| i as f32).collect();
+        let b: Vec<f32> = (0..64).map(|i| i as f32).collect();
         let expected: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let got = dot_product_unrolled(&a, &b);
+        let got_unrolled = dot_product_unrolled(&a, &b);
+        let got_intrinsic = dot_product(&a, &b);
+        
         assert!(
-            (got - expected).abs() < 1e-4,
+            (got_unrolled - expected).abs() < 1e-4,
             "unrolled dp mismatch: expected {}, got {}",
             expected,
-            got
+            got_unrolled
+        );
+
+        assert!(
+            (got_intrinsic - expected).abs() < 1e-4,
+            "intrinsic dp mismatch: expected {}, got {}",
+            expected,
+            got_intrinsic
         );
     }
 
